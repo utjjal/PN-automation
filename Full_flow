@@ -1,0 +1,101 @@
+import os
+import csv
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# 1. Setup paths
+script_dir = os.path.dirname(os.path.abspath(__file__))
+profile_path = os.path.join(script_dir, "chrome_profile")
+csv_path = os.path.join(script_dir, "data.csv")
+
+options = webdriver.ChromeOptions()
+options.add_experimental_option("detach", True)
+options.add_argument(f"--user-data-dir={profile_path}")
+options.add_argument('--ignore-certificate-errors')
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 30)
+
+try:
+    # Open the webpage directly
+    driver.get("https://ss-dev-adminpanel-705829581.us-west-2.elb.amazonaws.com/dashboard")
+    print("Webpage loaded. Processing CSV data...")
+
+    with open(csv_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)
+        
+        for index, row in enumerate(csv_reader, start=1):
+            deeplink_data = row['Deeplink']
+            rewards_data = row['Rewards']
+            
+            print(f"\n--- Processing Row {index} ---")
+            
+            # STEP 1: Input Data into Text Boxes
+            link_id_box = wait.until(EC.presence_of_element_located((By.NAME, "LinkId")))
+            reward_box = wait.until(EC.presence_of_element_located((By.ID, "reward_amount")))
+            
+            link_id_box.clear()
+            link_id_box.send_keys(deeplink_data)
+            
+            reward_box.clear()
+            reward_box.send_keys(rewards_data)
+            print(f"Filled fields with: {deeplink_data} and {rewards_data}")
+            
+            # STEP 2: Conditional Dropdown Logic
+            # Convert text to lowercase to prevent capitalization mismatch issues
+            link_text_lower = deeplink_data.lower()
+            
+            if "coins" in link_text_lower:
+                print("Detected 'coins'. Selecting corresponding dropdown options...")
+                
+                # Dropdown 1: Title
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-1"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-1-0"))).click()
+                
+                # Dropdown 2: Description (!!! Replace placeholder ID below !!!)
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-2"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-2-0"))).click()
+                
+                # Dropdown 3: RewardType (!!! Replace placeholder ID below !!!)
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-3"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-3-1"))).click()
+
+            elif "tickets" in link_text_lower:
+                print("Detected 'tickets'. Selecting corresponding dropdown options...")
+                
+                # Dropdown 1: Title
+                wait.until(EC.element_to_be_clickable((By.ID, "deep_link_title"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-1-1"))).click()
+                
+                # Dropdown 2: Description (!!! Replace placeholder ID below !!!)
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-2"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-2-1"))).click()
+                
+                # Dropdown 3: RewardType (!!! Replace placeholder ID below !!!)
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-3"))).click()
+                wait.until(EC.element_to_be_clickable((By.ID, "bs-select-3-2"))).click()
+            
+            else:
+                print(f"Warning: Row {index} contains neither 'coins' nor 'tickets'. Skipping dropdowns.")
+
+            # STEP 3: Click Submit Button and wait 10 seconds
+            submit_btn = wait.until(EC.element_to_be_clickable((By.ID, "deeplink_submit")))
+            submit_btn.click()
+            print("Submit button clicked. Waiting 10 seconds for processing...")
+            time.sleep(10.0)
+
+            # STEP 4: Click 'New Deeplink' to reset the flow
+            print("Navigating to 'New Deeplink' page to reset form...")
+            new_deeplink_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//a[@href="/deeplinks/edit"]')))
+            new_deeplink_btn.click()
+            
+            # Small 1-second buffer to ensure the page renders before looping again
+            time.sleep(1.0)
+
+    print("\nAll data from data.csv has been fully processed!")
+
+except Exception as e:
+    print(f"An error occurred during execution: {e}")

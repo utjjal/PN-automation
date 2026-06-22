@@ -1,0 +1,117 @@
+import os
+import csv
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+profile_path = os.path.join(script_dir, "chrome_profile")
+csv_path = os.path.join(script_dir, "data.csv")
+
+options = webdriver.ChromeOptions()
+options.add_experimental_option("detach", True)
+options.add_argument(f"--user-data-dir={profile_path}")
+options.add_argument('--ignore-certificate-errors')
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 10)
+
+def js_set_input(driver, element, value):
+    """Set a text/number input value via JavaScript."""
+    driver.execute_script("""
+        arguments[0].value = arguments[1];
+        arguments[0].dispatchEvent(new Event('input',  { bubbles: true }));
+        arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+    """, element, str(value))
+
+def js_set_select(driver, element, value, label=""):
+    """Set a <select> value via JavaScript and fire change event."""
+    print(f"-> Setting '{label}' = '{value}'")
+    driver.execute_script("""
+        arguments[0].value = arguments[1];
+        arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+    """, element, value)
+    time.sleep(0.5)
+
+def fill_reward_amount(driver, wait, value):
+    """Fill reward amount using send_keys — more reliable for number inputs."""
+    time.sleep(1.5)  # let page JS from RewardType settle
+    reward_box = wait.until(EC.presence_of_element_located((By.ID, "reward_amount")))
+    reward_box.click()
+    reward_box.clear()
+    reward_box.send_keys(Keys.CONTROL + "a")
+    reward_box.send_keys(Keys.DELETE)
+    reward_box.send_keys(str(value))
+    print(f"   RewardAmount='{value}' filled.")
+
+try:
+    driver.get("https://internal-social-admin-myxoau1a3z9h-542088410.us-west-2.elb.amazonaws.com/deeplinks/?msg=Deeplink%20saved%20successfully!")
+    print("Webpage loaded. Processing CSV data...")
+    time.sleep(3)
+
+    with open(csv_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)
+
+        for index, row in enumerate(csv_reader, start=1):
+            deeplink_data = row['Deeplink']
+            rewards_data  = row['Rewards']
+
+            print(f"\n--- Processing Row {index} ---")
+
+            # STEP 1: Locate all form fields
+            link_id_box   = wait.until(EC.presence_of_element_located((By.NAME, "LinkId")))
+            select_title  = wait.until(EC.presence_of_element_located((By.NAME, "Title")))
+            select_desc   = wait.until(EC.presence_of_element_located((By.NAME, "Description")))
+            select_reward = wait.until(EC.presence_of_element_located((By.NAME, "RewardType")))
+
+            # STEP 2: Fill LinkId
+            js_set_input(driver, link_id_box, deeplink_data)
+            print(f"Filled: LinkId='{deeplink_data}'")
+
+            # STEP 3: Set dropdowns based on keyword
+            link_text_lower = deeplink_data.lower()
+
+            if "coins" in link_text_lower:
+                print("Detected 'coins'.")
+                js_set_select(driver, select_title,  "DeepLinksFreeCoinsTitle",       "Title")
+                js_set_select(driver, select_desc,   "DeepLinksFreeCoinsDescription", "Description")
+                js_set_select(driver, select_reward, "CoinsSKU",                      "RewardType")
+
+            elif "tickets" in link_text_lower:
+                print("Detected 'tickets'.")
+                js_set_select(driver, select_title,  "DeepLinksFreeTicketsTitle",       "Title")
+                js_set_select(driver, select_desc,   "DeepLinksFreeTicketsDescription", "Description")
+                js_set_select(driver, select_reward, "BingoTicketSKU",                  "RewardType")
+
+            else:
+                print(f"Row {index} skipped (no keyword match).")
+                continue
+
+            # STEP 4: Fill RewardAmount via send_keys after dropdowns
+            fill_reward_amount(driver, wait, rewards_data)
+
+            time.sleep(15)
+
+            # STEP 5: Submit
+            print("Submitting form...")
+            submit_btn = wait.until(EC.presence_of_element_located((By.ID, "deeplink_submit")))
+            driver.execute_script("arguments[0].click();", submit_btn)
+            print("Submit clicked. Waiting...")
+            time.sleep(6.0)
+
+            # STEP 6: Navigate to new deeplink form
+            print("Navigating to 'New Deeplink' page...")
+            new_deeplink_btn = wait.until(EC.presence_of_element_located(
+                (By.XPATH, '//a[@href="/deeplinks/edit"]')
+            ))
+            driver.execute_script("arguments[0].click();", new_deeplink_btn)
+            time.sleep(1.5)
+
+    print("\nAll rows processed successfully!")
+
+except Exception as e:
+    import traceback
+    print

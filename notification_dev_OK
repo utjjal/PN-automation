@@ -1,0 +1,96 @@
+import os
+import csv
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# JavaScript helper function to safely input text (including emojis) without crashes
+def safe_send_keys(driver, element, text):
+    driver.execute_script("""
+        arguments[0].value = arguments[1];
+        arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+        arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+    """, element, str(text))
+
+# 1. Setup paths for profile and data
+script_dir = os.path.dirname(os.path.abspath(__file__))
+profile_path = os.path.join(script_dir, "chrome_profile")
+csv_path = os.path.join(script_dir, "notification.csv")
+
+options = webdriver.ChromeOptions()
+options.add_experimental_option("detach", True)
+options.add_argument(f"--user-data-dir={profile_path}")
+options.add_argument('--ignore-certificate-errors')
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 15)
+
+try:
+    # 2. Open the notification page directly
+    driver.get("https://ss-dev-pn-1959977357.us-west-2.elb.amazonaws.com/scheduler/schedule/PUSH_NOTIFICATION")
+    print("Webpage loaded. Processing notification data...")
+
+    with open(csv_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)
+        
+        for index, row in enumerate(csv_reader, start=1):
+            print(f"\n--- Processing Row {index} ---")
+            
+            # Extract data from CSV
+            cname_data = row['CampaignName']
+            title_data = row['Title']
+            body_data = row['Body']
+            inputData = row['pcid']
+            #deeplink_id_data = row['deepLinkId']
+            time_data = row['ScheduleTime']
+            
+            #Construct the dynamic JSON-like string structure for the Data field
+            json_payload = f'{{"pcid": "{inputData}"}}'
+            
+            # 3. Locate all 5 text input fields by ID
+            cname_field = wait.until(EC.presence_of_element_located((By.ID, "cname")))
+            title_field = wait.until(EC.presence_of_element_located((By.ID, "inputTitle")))
+            body_field = wait.until(EC.presence_of_element_located((By.ID, "inputBody")))
+            data_field = wait.until(EC.presence_of_element_located((By.ID, "inputData")))
+            time_field = wait.until(EC.presence_of_element_located((By.ID, "inputTime")))
+            
+            # 4. Clear all fields cleanly before writing
+            cname_field.clear()
+            title_field.clear()
+            body_field.clear()
+            data_field.clear()
+            time_field.clear()
+            print("Cleared all text input fields.")
+            
+            # 5. Input text data using the JavaScript emoji-safe handler
+            safe_send_keys(driver, cname_field, cname_data)
+            safe_send_keys(driver, title_field, title_data)
+            safe_send_keys(driver, body_field, body_data)
+            safe_send_keys(driver, data_field, inputData)
+            safe_send_keys(driver, time_field, time_data)
+            print(f"Populated data fields safely for Campaign: {cname_data}")
+
+            time.sleep(3.0)
+            # 6. Click the Submit button via JS
+            submit_btn = wait.until(EC.element_to_be_clickable((By.ID, "submitBtn")))
+            driver.execute_script("arguments[0].click();", submit_btn)
+            print("Initial submit button clicked successfully.")
+            
+            # 7. Wait 5 seconds 
+            print("Waiting 5 seconds before clicking the final confirmation button...")
+            time.sleep(5.0)
+
+            # 8. NEW ACTION: Click the final confirmation button (id="submit")
+            final_submit_btn = wait.until(EC.element_to_be_clickable((By.ID, "submit")))
+            driver.execute_script("arguments[0].click();", final_submit_btn)
+            print("Final confirmation submit button clicked successfully.")
+            
+            # Small 1-second buffer time to let the submission clear before looping to the next row
+            time.sleep(1.0)
+
+    print("\nAll notifications from notification.csv have been successfully completed!")
+
+except Exception as e:
+    print(f"\n[CRITICAL ERROR] Failed execution: {e}")

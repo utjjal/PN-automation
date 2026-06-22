@@ -1,0 +1,138 @@
+import os
+import csv
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+profile_path = os.path.join(script_dir, "chrome_profile")
+csv_path = os.path.join(script_dir, "data.csv")
+
+options = webdriver.ChromeOptions()
+options.add_experimental_option("detach", True)
+options.add_argument(f"--user-data-dir={profile_path}")
+options.add_argument('--ignore-certificate-errors')
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 10)
+
+try:
+    driver.get("https://ss-dev-adminpanel-705829581.us-west-2.elb.amazonaws.com/dashboard")
+    print("Webpage loaded. Processing CSV data...")
+
+    with open(csv_path, mode='r', encoding='utf-8') as file:
+        csv_reader = csv.DictReader(file)
+        
+        for index, row in enumerate(csv_reader, start=1):
+            deeplink_data = row['Deeplink']
+            rewards_data = row['Rewards']
+            
+            print(f"\n--- Processing Row {index} ---")
+            
+            # STEP 1: Input Text fields
+            link_id_box = wait.until(EC.presence_of_element_located((By.NAME, "LinkId")))
+            reward_box = wait.until(EC.presence_of_element_located((By.ID, "reward_amount")))
+            
+            link_id_box.clear()
+            link_id_box.send_keys(deeplink_data)
+            reward_box.clear()
+            reward_box.send_keys(rewards_data)
+            print("Filled text fields.")
+            
+            link_text_lower = deeplink_data.lower()
+            
+            # STEP 2: Conditional Dropdown Logic
+            if "coins" in link_text_lower:
+                print("Detected 'coins'.")
+                
+                # --- Dropdown 1: Title ---
+                print("-> Forcing Title Dropdown open...")
+                # This finds the button right next to the hidden select element
+                title_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='deep_link_title']/following-sibling::button | //button[@data-id='deep_link_title']")))
+                driver.execute_script("arguments[0].click();", title_btn)
+                time.sleep(1)
+                
+                print("-> Selecting option bs-select-1-0...")
+                opt1 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-1-0")))
+                driver.execute_script("arguments[0].click();", opt1)
+                time.sleep(5)
+                
+                # --- Dropdown 2: Description ---
+                #print("-> Forcing Description Dropdown open...")
+                # !!! REPLACE 'YOUR_DESCRIPTION_SELECT_ID' with the hidden element's true ID or Name !!!
+                desc_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='deep_link_form']/following-sibling::button | //button[@data-id='deep_link_form']")))
+                driver.execute_script("arguments[0].click();", desc_btn)
+                time.sleep(5)
+                
+                print("-> Selecting option bs-select-2-0...")
+                opt2 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-2-0")))
+                driver.execute_script("arguments[0].click();", opt2)
+                
+                # --- Dropdown 3: RewardType ---
+                print("-> Forcing RewardType Dropdown open...")
+                # !!! REPLACE 'YOUR_REWARD_TYPE_SELECT_ID' with the hidden element's true ID or Name !!!
+                reward_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='bs-select-3']/following-sibling::button | //button[@data-id='bs-select-3']")))
+                driver.execute_script("arguments[0].click();", reward_btn)
+                time.sleep(5)
+                
+                print("-> Selecting option bs-select-3-1...")
+                opt3 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-3-1")))
+                driver.execute_script("arguments[0].click();", opt3)
+
+            elif "tickets" in link_text_lower:
+                print("Detected 'tickets'.")
+                
+                # --- Dropdown 1: Title ---
+                print("-> Forcing Title Dropdown open...")
+                title_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='deep_link_title']/following-sibling::button | //button[@data-id='deep_link_title']")))
+                driver.execute_script("arguments[0].click();", title_btn)
+                time.sleep(0.5)
+                
+                print("-> Selecting option bs-select-1-1...")
+                opt1 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-1-1")))
+                driver.execute_script("arguments[0].click();", opt1)
+                time.sleep(2)
+                
+                # --- Dropdown 2: Description ---
+                print("-> Forcing Description Dropdown open...")
+                desc_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='bs-select-2']/following-sibling::button | //button[.//div[text()='Enjoy Free {0} Coins']]")))
+                driver.execute_script("arguments[0].click();", desc_btn)
+                time.sleep(0.5)
+                
+                print("-> Selecting option bs-select-2-1...")
+                opt2 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-2-1")))
+                driver.execute_script("arguments[0].click();", opt2)
+                time.sleep(2)
+                
+                # --- Dropdown 3: RewardType ---
+                print("-> Forcing RewardType Dropdown open...")
+                reward_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[@id='bs-select-3']/following-sibling::button | //button[@data-id='bs-select-3']")))
+                driver.execute_script("arguments[0].click();", reward_btn)
+                time.sleep(0.5)
+                
+                print("-> Selecting option bs-select-3-2...")
+                opt3 = wait.until(EC.presence_of_element_located((By.ID, "bs-select-3-2")))
+                driver.execute_script("arguments[0].click();", opt3)
+            
+            else:
+                print(f"Row {index} skipped (no match).")
+
+            # STEP 3: Submit and wait
+            submit_btn = wait.until(EC.presence_of_element_located((By.ID, "deeplink_submit")))
+            driver.execute_script("arguments[0].click();", submit_btn)
+            print("Submit clicked. Waiting 10 seconds...")
+            time.sleep(10.0)
+
+            # STEP 4: Reset Form via Link
+            print("Navigating to 'New Deeplink' page...")
+            new_deeplink_btn = wait.until(EC.presence_of_element_located((By.XPATH, '//a[@href="/deeplinks/edit"]')))
+            driver.execute_script("arguments[0].click();", new_deeplink_btn)
+            time.sleep(1.0)
+
+    print("\nAll data from data.csv has been fully processed!")
+
+except Exception as e:
+    print(f"\n[CRITICAL ERROR] Failed execution.")
+    print(f"Error Details: {e}")
